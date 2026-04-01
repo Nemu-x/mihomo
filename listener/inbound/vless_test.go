@@ -444,3 +444,98 @@ func TestInboundVless_XHTTP_StreamUp(t *testing.T) {
 	}
 	testInboundVlessTLS(t, inboundOptions, outboundOptions, false)
 }
+
+func testInboundVlessSingMuxOnly(t *testing.T, inboundOptions inbound.VlessOption, outboundOptions outbound.VlessOption) {
+	t.Parallel()
+	inboundOptions.BaseOption = inbound.BaseOption{
+		NameStr: "vless_inbound",
+		Listen:  "127.0.0.1",
+		Port:    "0",
+	}
+	inboundOptions.Users = []inbound.VlessUser{
+		{Username: "test", UUID: userUUID, Flow: "xtls-rprx-vision"},
+	}
+
+	in, err := inbound.NewVless(&inboundOptions)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	tunnel := NewHttpTestTunnel()
+	defer tunnel.Close()
+
+	err = in.Listen(tunnel)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer in.Close()
+
+	addrPort, err := netip.ParseAddrPort(in.Address())
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	outboundOptions.Name = "vless_outbound"
+	outboundOptions.Server = addrPort.Addr().String()
+	outboundOptions.Port = int(addrPort.Port())
+	outboundOptions.UUID = userUUID
+
+	out, err := outbound.NewVless(outboundOptions)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer out.Close()
+
+	testSingMux(t, tunnel, out)
+}
+
+func TestInboundVless_XHTTP_StreamUp_SingMux(t *testing.T) {
+	inboundOptions := inbound.VlessOption{
+		Certificate: tlsCertificate,
+		PrivateKey:  tlsPrivateKey,
+		XHTTPConfig: inbound.XHTTPConfig{
+			Path: "/vless-xhttp",
+			Host: "example.com",
+			Mode: "stream-up",
+		},
+	}
+	outboundOptions := outbound.VlessOption{
+		TLS:         true,
+		Fingerprint: tlsFingerprint,
+		Network:     "xhttp",
+		XHTTPOpts: outbound.XHTTPOptions{
+			Path: "/vless-xhttp",
+			Host: "example.com",
+			Mode: "stream-up",
+		},
+	}
+
+	testInboundVlessSingMuxOnly(t, inboundOptions, outboundOptions)
+}
+
+func TestInboundVless_XHTTP_DownloadSettings_SingMux(t *testing.T) {
+	inboundOptions := inbound.VlessOption{
+		Certificate: tlsCertificate,
+		PrivateKey:  tlsPrivateKey,
+		XHTTPConfig: inbound.XHTTPConfig{
+			Path: "/vless-xhttp",
+			Host: "example.com",
+			Mode: "stream-up",
+		},
+	}
+	outboundOptions := outbound.VlessOption{
+		TLS:               true,
+		Fingerprint:       tlsFingerprint,
+		ServerName:        "example.org",
+		ClientFingerprint: "chrome",
+		Network:           "xhttp",
+		XHTTPOpts: outbound.XHTTPOptions{
+			Path:             "/vless-xhttp",
+			Host:             "example.com",
+			Mode:             "stream-up",
+			DownloadSettings: &outbound.XHTTPDownloadSettings{},
+		},
+	}
+
+	testInboundVlessSingMuxOnly(t, inboundOptions, outboundOptions)
+}
